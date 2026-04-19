@@ -1,0 +1,43 @@
+# --- Android & Gradle ---
+*.iml
+.gradle/
+/.gradle/
+.gradle-user/
+local.properties
+/build/
+/app/build/
+captures/
+debug-captunes/
+debug-captures/
+*.apk
+*.aar
+*.dex
+
+# --- Android Studio / IntelliJ IDEA ---
+.idea/
+*.ipr
+*.iws
+*.iml
+.externalNativeBuild/
+.cxx/
+*.cxx
+*.h
+*.cpp
+
+# --- Kotlin & Java ---
+*.class
+*.kotlin_module
+
+# --- OS Specific (Windows, macOS, Linux) ---
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.log
+
+# --- Project-Specific Temporary/Debug Files ---
+window_dump.xml
+window_dump_after.xml
+rendered_page.html
+slidesinfo_response.json
+*.tmp

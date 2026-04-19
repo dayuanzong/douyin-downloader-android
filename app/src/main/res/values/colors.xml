@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="green_700">#09A54B</color>
+    <color name="green_600">#10C35A</color>
+    <color name="green_400">#5ED68E</color>
+    <color name="green_300">#92E5B4</color>
+    <color name="green_200">#BCEFD0</color>
+    <color name="green_100">#E2F8EA</color>
+    <color name="mint_100">#F1FBF5</color>
+    <color name="mint_50">#F7FDF9</color>
+    <color name="ink_900">#17231D</color>
+    <color name="ink_700">#3D5147</color>
+    <color name="ink_600">#5A6B62</color>
+    <color name="ink_500">#78887F</color>
+    <color name="line_200">#DCE8E0</color>
+    <color name="surface_50">#F9FBFA</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
