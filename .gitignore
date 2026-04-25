@@ -40,3 +40,5 @@ window_dump_after.xml
 rendered_page.html
 slidesinfo_response.json
 *.tmp
+tools/douyin-web-cli/__pycache__/
+tools/douyin-web-cli/runs/
