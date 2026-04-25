@@ -11,7 +11,7 @@
     <string name="status_saving">正在保存内容…</string>
     <string name="status_success">操作完成</string>
     <string name="status_failed">操作失败</string>
-    <string name="status_ready_to_preview_save">内容已准备好，可以直接预览或保存。</string>
+    <string name="status_ready_to_preview_save">内容已经准备好，可以直接预览或保存。</string>
     <string name="status_network_hint">这一步会和抖音页面交互，耗时会受网络返回和页面脚本影响。</string>
     <string name="status_network_retry">当前网络返回不稳定，请稍后重试。</string>
     <string name="error_empty_share_text">请先粘贴抖音分享文本。</string>
@@ -24,11 +24,13 @@
     <string name="placeholder_image_preview">图片预览加载中…</string>
     <string name="placeholder_image_missing">当前结果不是图文作品</string>
     <string name="placeholder_video_missing">当前结果不是视频作品</string>
+    <string name="hint_tap_to_play">点击预览区域开始播放</string>
     <string name="label_copy_link">复制链接</string>
     <string name="label_save_all">保存全部</string>
     <string name="label_copy_title">复制标题</string>
     <string name="label_save_video">保存视频</string>
     <string name="label_save_image">保存图 %1$d</string>
+    <string name="label_save_motion">保存动图 %1$d</string>
     <string name="label_prev_image">上一张</string>
     <string name="label_next_image">下一张</string>
     <string name="label_page_indicator">%1$d/%2$d</string>
@@ -41,7 +43,7 @@
     <string name="result_video_summary">已识别 1 个视频，可直接保存为 mp4。</string>
     <string name="result_title_summary">标题已提取，可直接复制。</string>
     <string name="result_saved_summary">已保存 %1$d 个文件到 %2$s</string>
-    <string name="hint_image_motion">当前优先预览动图效果，点击“保存图”只保存静态图，点击“保存全部”会连同动图一起保存。</string>
+    <string name="hint_image_motion">当前页面包含动图内容，点击预览区域即可手动播放；“保存动图”会保存当前动图页面，“保存全部”会连同静态图一起保存。</string>
     <string name="hint_image_static">当前这组内容只会保存图片本身。</string>
     <string name="hint_video_save">保存时会自动写入 mp4 到默认目录。</string>
     <string name="hint_title_copy">标题页不会下载文件，可直接复制标题，或点击“保存全部”。</string>

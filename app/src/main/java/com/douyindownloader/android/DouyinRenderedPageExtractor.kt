@@ -63,6 +63,7 @@ class DouyinRenderedPageExtractor(private val context: Context) {
         private var pollCount = 0
         private var slideAdvanceAttempts = 0
         private var finished = false
+        private val requestLock = Any()
         private val requestUrls = linkedSetOf<String>()
         private val slidesInfoDetailRef = AtomicReference<AwemeDetail?>()
         @Volatile
@@ -125,10 +126,16 @@ class DouyinRenderedPageExtractor(private val context: Context) {
             if (url.contains("/aweme/slidesinfo/")) {
                 sawSlidesInfoRequest = true
             }
-            if (requestUrls.size < MAX_CAPTURED_REQUESTS) {
-                requestUrls += url
-                DebugSnapshotStore.saveRequests(context, awemeId, urls.getOrNull(currentIndex), requestUrls.toList())
+            val requestSnapshot = synchronized(requestLock) {
+                if (requestUrls.size >= MAX_CAPTURED_REQUESTS && url !in requestUrls) {
+                    return
+                }
+                if (!requestUrls.add(url)) {
+                    return
+                }
+                requestUrls.toList()
             }
+            DebugSnapshotStore.saveRequests(context, awemeId, urls.getOrNull(currentIndex), requestSnapshot)
         }
 
         private fun interceptApiResponse(request: WebResourceRequest?): WebResourceResponse? {
@@ -146,7 +153,7 @@ class DouyinRenderedPageExtractor(private val context: Context) {
                     readTimeout = 15_000
                     instanceFollowRedirects = true
                     safeRequest.requestHeaders.forEach { (key, value) -> setRequestProperty(key, value) }
-                    setRequestProperty("User-Agent", USER_AGENT)
+                    setRequestProperty("User-Agent", userAgentFor(urls.getOrNull(currentIndex)))
                     setRequestProperty("Referer", urls.getOrNull(currentIndex) ?: "https://www.douyin.com/")
                     setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
                 }
@@ -210,8 +217,10 @@ class DouyinRenderedPageExtractor(private val context: Context) {
                 finish(null, null)
                 return
             }
+            val targetUrl = urls[currentIndex]
+            webView.settings.userAgentString = userAgentFor(targetUrl)
             webView.loadUrl(
-                urls[currentIndex],
+                targetUrl,
                 mapOf(
                     "Referer" to "https://www.douyin.com/",
                     "Accept-Language" to "zh-CN,zh;q=0.9",
@@ -235,7 +244,7 @@ class DouyinRenderedPageExtractor(private val context: Context) {
             webView.evaluateJavascript(buildSnapshotScript(awemeId)) { raw ->
                 if (finished) return@evaluateJavascript
 
-                val snapshot = parseSnapshot(raw, requestUrls.toList())
+                val snapshot = parseSnapshot(raw, snapshotRequestUrls())
                 slidesInfoDetailRef.get()?.let { detail ->
                     snapshot?.let { currentSnapshot ->
                         DebugSnapshotStore.saveSnapshot(context, awemeId, currentSnapshot, detail)
@@ -293,11 +302,13 @@ class DouyinRenderedPageExtractor(private val context: Context) {
                 } else if (pollCount < MAX_POLL_COUNT) {
                     schedulePoll(POLL_DELAY_MS)
                 } else {
-                    debugLog("poll miss awemeId=$awemeId recentRequests=${requestUrls.toList().takeLast(20)}")
+                    debugLog("poll miss awemeId=$awemeId recentRequests=${snapshotRequestUrls().takeLast(20)}")
                     loadNext()
                 }
             }
         }
+
+        private fun snapshotRequestUrls(): List<String> = synchronized(requestLock) { requestUrls.toList() }
 
         private fun finish(result: AwemeDetail?, error: Throwable?) {
             if (finished) return
@@ -350,6 +361,10 @@ class DouyinRenderedPageExtractor(private val context: Context) {
             }
         }
 
+        private fun userAgentFor(url: String?): String {
+            val lowered = url.orEmpty().lowercase()
+            return if ("www.douyin.com" in lowered) DESKTOP_USER_AGENT else USER_AGENT
+        }
         private fun readAllBytes(inputStream: InputStream?): ByteArray {
             return inputStream?.use { it.readBytes() } ?: ByteArray(0)
         }
@@ -562,6 +577,9 @@ class DouyinRenderedPageExtractor(private val context: Context) {
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S9210) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        private const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
     }
 }
 

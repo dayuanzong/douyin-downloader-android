@@ -7,6 +7,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 object DouyinParsing {
+    private const val MIN_CONTENT_IMAGE_GROUP_SCORE = 20
     private val pacePushPattern = Regex("""self\.__pace_f\.push\(\[1,"(.*?)"\]\)""", setOf(RegexOption.DOT_MATCHES_ALL))
     private val renderScriptPattern = Regex(
         """<script[^>]*id=["'](?:RENDER_DATA|_ROUTER_DATA)["'][^>]*>(.*?)</script>""",
@@ -36,15 +37,18 @@ object DouyinParsing {
     fun candidateWorkUrls(awemeId: String, pageUrl: String?): List<String> {
         val cleaned = pageUrl?.trim().orEmpty()
         val candidates = mutableListOf<String>()
-        if (cleaned.startsWith("http")) {
-            candidates += cleaned
-        }
         if ("/note/" in cleaned || "/slides/" in cleaned) {
             candidates += "https://www.douyin.com/note/$awemeId?previous_page=app_code_link"
+            if (cleaned.startsWith("http")) {
+                candidates += cleaned
+            }
             candidates += "https://www.iesdouyin.com/share/slides/$awemeId/?from_ssr=1"
             candidates += "https://www.iesdouyin.com/share/note/$awemeId/"
         } else {
             candidates += "https://www.douyin.com/video/$awemeId?previous_page=app_code_link"
+            if (cleaned.startsWith("http")) {
+                candidates += cleaned
+            }
             candidates += "https://www.iesdouyin.com/share/video/$awemeId/"
             candidates += "https://www.douyin.com/note/$awemeId?previous_page=app_code_link"
         }
@@ -273,6 +277,7 @@ object DouyinParsing {
                 }
             }
             .let { groups -> filterLikelyCoverGroups(groups, motionUrls.isNotEmpty()) }
+            .let { groups -> filterLikelyContentGroups(groups, motionUrls.isNotEmpty()) }
 
         if (allImageGroups.isNotEmpty()) {
             val assets = allImageGroups.mapIndexed { index, urls ->
@@ -305,6 +310,9 @@ object DouyinParsing {
         }
         val lowered = url.lowercase()
         if ("douyin-pc-web/uuu_265.mp4" in lowered) {
+            return false
+        }
+        if (".mp3" in lowered || "mime_type=audio" in lowered || "video_id=http" in lowered) {
             return false
         }
         return ".mp4" in lowered || "mime_type=video_mp4" in lowered || "__vid=" in lowered || "/play/" in lowered
@@ -464,7 +472,36 @@ object DouyinParsing {
         coercePlayUrls(video.opt("playAddr") ?: video.opt("play_addr"))?.let { normalized.put("play_addr", JSONObject().put("url_list", it)) }
         coercePlayUrls(video.opt("playAddrH265") ?: video.opt("play_addr_h265"))?.let { normalized.put("play_addr_h265", JSONObject().put("url_list", it)) }
         val playApi = video.optString("playApi").ifBlank { video.optString("play_api") }
-        if (playApi.startsWith("http")) normalized.put("download_addr", JSONObject().put("url_list", JSONArray().put(playApi)))
+        val downloadApi = video.optString("downloadAddr").ifBlank { video.optString("download_addr") }
+        val downloadUrl = playApi.ifBlank { downloadApi }
+        if (downloadUrl.startsWith("http")) normalized.put("download_addr", JSONObject().put("url_list", JSONArray().put(downloadUrl)))
+
+        val bitRates = video.optJSONArray("bitRateList") ?: video.optJSONArray("bit_rate")
+        if (bitRates != null) {
+            val normalizedBitRates = JSONArray()
+            for (index in 0 until bitRates.length()) {
+                val variant = bitRates.optJSONObject(index) ?: continue
+                val variantJson = JSONObject().apply {
+                    put("bit_rate", variant.optInt("bitRate", variant.optInt("bit_rate")))
+                    put("gear_name", variant.optString("gearName").ifBlank { variant.optString("gear_name") })
+                    put("width", variant.optInt("width"))
+                    put("height", variant.optInt("height"))
+                }
+                coercePlayUrls(variant.opt("playAddr") ?: variant.opt("play_addr"))?.let {
+                    variantJson.put("play_addr", JSONObject().put("url_list", it))
+                }
+                coercePlayUrls(variant.opt("playAddrH265") ?: variant.opt("play_addr_h265"))?.let {
+                    variantJson.put("play_addr_h265", JSONObject().put("url_list", it))
+                }
+                if (variantJson.has("play_addr") || variantJson.has("play_addr_h265")) {
+                    normalizedBitRates.put(variantJson)
+                }
+            }
+            if (normalizedBitRates.length() > 0) {
+                normalized.put("bit_rate", normalizedBitRates)
+            }
+        }
+
         return if (normalized.length() > 0) normalized else null
     }
 
@@ -503,7 +540,17 @@ object DouyinParsing {
         val lowerUrl = url.lowercase()
         val lowerClass = className.lowercase()
         val lowerAlt = alt.lowercase()
-        if ("avatar" in lowerUrl || "avatar" in lowerClass || "icon" in lowerUrl || "icon" in lowerClass || "logo" in lowerUrl || "emoji" in lowerUrl) return false
+        if (
+            "avatar" in lowerUrl ||
+            "avatar" in lowerClass ||
+            "icon" in lowerUrl ||
+            "icon" in lowerClass ||
+            "logo" in lowerUrl ||
+            "emoji" in lowerUrl ||
+            looksLikeStaticAssetImageUrl(lowerUrl)
+        ) {
+            return false
+        }
         return lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg") || lowerUrl.endsWith(".png") || lowerUrl.endsWith(".webp") || lowerUrl.endsWith(".gif") || "mime_type=image_" in lowerUrl || "douyinpic.com" in lowerUrl || "zjcdn.com" in lowerUrl || "picture" in lowerAlt
     }
 
@@ -514,13 +561,13 @@ object DouyinParsing {
             lowerUrl.endsWith(".js") ||
             lowerUrl.endsWith(".css") ||
             lowerUrl.endsWith(".json") ||
-            "avatar" in lowerUrl ||
-            "emoji" in lowerUrl ||
-            "icon" in lowerUrl
+            lowerUrl.endsWith(".svg") ||
+            looksLikeStaticAssetImageUrl(lowerUrl)
         ) {
             return false
         }
-        return lowerUrl.endsWith(".jpg") ||
+        val looksLikeImageResource =
+            lowerUrl.endsWith(".jpg") ||
             lowerUrl.endsWith(".jpeg") ||
             lowerUrl.endsWith(".png") ||
             lowerUrl.endsWith(".webp") ||
@@ -529,6 +576,10 @@ object DouyinParsing {
             "douyinpic.com" in lowerUrl ||
             "p3-pc-sign.douyinpic.com" in lowerUrl ||
             "zjcdn.com/img/" in lowerUrl
+        if (!looksLikeImageResource) {
+            return false
+        }
+        return hasStrongAwemeImageSignal(lowerUrl) || "douyinpic.com" in lowerUrl
     }
 
     private fun buildPreferredImageCandidates(url: String): List<String> {
@@ -579,12 +630,66 @@ object DouyinParsing {
         }
     }
 
+    private fun filterLikelyContentGroups(groups: List<List<String>>, hasMotionContent: Boolean): List<List<String>> {
+        if (groups.size <= 1) {
+            return groups
+        }
+
+        val candidateGroups = groups.filterNot(::looksLikeNonContentImageGroup)
+        if (candidateGroups.isEmpty()) {
+            return groups
+        }
+
+        val strongGroups = candidateGroups.filter { urls ->
+            scoreRenderedImageGroup(urls) >= MIN_CONTENT_IMAGE_GROUP_SCORE ||
+                urls.any { hasStrongAwemeImageSignal(it.lowercase()) }
+        }
+        if (strongGroups.isNotEmpty()) {
+            return strongGroups
+        }
+
+        if (hasMotionContent) {
+            return candidateGroups.filter { scoreRenderedImageGroup(it) > 0 }.ifEmpty { candidateGroups }
+        }
+
+        return candidateGroups
+    }
+
     private fun looksLikeRenderedCoverGroup(urls: List<String>): Boolean {
         val loweredUrls = urls.map { it.lowercase() }
         if (loweredUrls.any { "biz_tag=aweme_images" in it || "~tplv-dy-water-v2" in it || "/tos-cn-i-" in it }) {
             return false
         }
         return loweredUrls.any { "/obj/tos-cn-p-" in it || "sign.douyinpic.com/obj/" in it }
+    }
+
+    private fun looksLikeNonContentImageGroup(urls: List<String>): Boolean {
+        return urls.all { looksLikeStaticAssetImageUrl(it.lowercase()) }
+    }
+
+    private fun hasStrongAwemeImageSignal(lowerUrl: String): Boolean {
+        return "biz_tag=aweme_images" in lowerUrl ||
+            "tplv-dy-aweme-images" in lowerUrl ||
+            "/tos-cn-i-" in lowerUrl ||
+            "mime_type=image_" in lowerUrl ||
+            "live_photo" in lowerUrl
+    }
+
+    private fun looksLikeStaticAssetImageUrl(lowerUrl: String): Boolean {
+        return "avatar" in lowerUrl ||
+            "emoji" in lowerUrl ||
+            "icon" in lowerUrl ||
+            "favicon" in lowerUrl ||
+            "logo" in lowerUrl ||
+            "emblem" in lowerUrl ||
+            "blackbg" in lowerUrl ||
+            "douyindefault" in lowerUrl ||
+            "nav_" in lowerUrl ||
+            "pcweb_cover" in lowerUrl ||
+            "aweme-avatar" in lowerUrl ||
+            "douyinstatic.com/obj/douyin-pc-web" in lowerUrl ||
+            "byteimg.com/tos-cn-i-9r5gewecjs" in lowerUrl ||
+            "/obj/tos-cn-i-tsj2vxp0zn/" in lowerUrl
     }
 }
 

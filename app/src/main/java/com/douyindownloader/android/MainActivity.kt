@@ -7,13 +7,16 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
+import android.view.Gravity
 import android.view.View
 import android.webkit.WebView
 import android.content.pm.ApplicationInfo
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -44,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resultCard: View
     private lateinit var resultSummaryTextView: TextView
     private lateinit var resultTabLayout: TabLayout
+    private lateinit var previewSurfaceContainer: FrameLayout
     private lateinit var previewImageView: ImageView
     private lateinit var previewVideoView: VideoView
     private lateinit var previewPlaceholderTextView: TextView
@@ -66,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private var currentTab: ResultTab = ResultTab.IMAGE
     private var currentImageIndex: Int = 0
     private var previewRequestToken: Int = 0
+    private var previewVideoPrepared: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,6 +112,7 @@ class MainActivity : AppCompatActivity() {
         resultCard = findViewById(R.id.resultCard)
         resultSummaryTextView = findViewById(R.id.resultSummaryTextView)
         resultTabLayout = findViewById(R.id.resultTabLayout)
+        previewSurfaceContainer = findViewById(R.id.previewSurfaceContainer)
         previewImageView = findViewById(R.id.previewImageView)
         previewVideoView = findViewById(R.id.previewVideoView)
         previewPlaceholderTextView = findViewById(R.id.previewPlaceholderTextView)
@@ -152,6 +158,8 @@ class MainActivity : AppCompatActivity() {
         copyLinkButton.setOnClickListener { copyResolvedLink() }
         savePrimaryButton.setOnClickListener { handlePrimaryAction() }
         saveAllButton.setOnClickListener { saveAllMedia() }
+        previewVideoView.setOnClickListener { togglePreviewPlayback() }
+        previewPlaceholderTextView.setOnClickListener { togglePreviewPlayback() }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -254,7 +262,7 @@ class MainActivity : AppCompatActivity() {
                     resultSummaryTextView.text = buildResultSummary(extraction)
                     setIdleStatus(
                         title = getString(R.string.status_success),
-                        detail = getString(R.string.status_ready_to_preview_save),
+                        detail = buildExtractionStatusDetail(extraction),
                     )
                     selectDefaultTab(extraction)
                     renderCurrentTab()
@@ -304,6 +312,7 @@ class MainActivity : AppCompatActivity() {
         savePrimaryButton.text = getString(R.string.label_save_video)
         savePrimaryButton.isEnabled = videoItem != null
         copyLinkButton.isEnabled = true
+        resultSummaryTextView.text = buildResultSummary(extraction)
 
         if (videoItem == null) {
             showPlaceholder(getString(R.string.placeholder_video_missing))
@@ -326,9 +335,15 @@ class MainActivity : AppCompatActivity() {
         imageControlsContainer.isVisible = extraction.imageItems.isNotEmpty()
         saveAllButton.isVisible = extraction.imageItems.isNotEmpty()
         saveAllButton.isEnabled = extraction.imageItems.isNotEmpty()
-        savePrimaryButton.text = getString(R.string.label_save_image, currentImageIndex + 1)
+        savePrimaryButton.text =
+            if (imageItem?.primaryAssetKind == SavedAssetKind.MOTION) {
+                getString(R.string.label_save_motion, currentImageIndex + 1)
+            } else {
+                getString(R.string.label_save_image, currentImageIndex + 1)
+            }
         savePrimaryButton.isEnabled = imageItem != null
         copyLinkButton.isEnabled = true
+        resultSummaryTextView.text = buildResultSummary(extraction)
         previewVideoView.stopPlayback()
         previewVideoView.isVisible = false
 
@@ -368,6 +383,7 @@ class MainActivity : AppCompatActivity() {
         imageControlsContainer.isVisible = false
         titleContentTextView.isVisible = true
         titleContentTextView.text = extraction.description.ifBlank { getString(R.string.label_title_empty) }
+        resultSummaryTextView.text = buildResultSummary(extraction)
         savePrimaryButton.text = getString(R.string.label_copy_title)
         savePrimaryButton.isEnabled = extraction.description.isNotBlank()
         saveAllButton.isVisible = extraction.videoItem != null || extraction.imageItems.isNotEmpty()
@@ -382,6 +398,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         previewRequestToken += 1
+        previewVideoPrepared = false
         previewImageView.isVisible = false
         previewVideoView.isVisible = true
         previewLoadingBar.isVisible = true
@@ -390,21 +407,73 @@ class MainActivity : AppCompatActivity() {
 
         previewVideoView.setOnPreparedListener { mediaPlayer ->
             previewLoadingBar.isVisible = false
-            previewPlaceholderTextView.isVisible = false
             configurePreparedPlayer(mediaPlayer)
-            previewVideoView.start()
+            previewVideoPrepared = true
+            previewSurfaceContainer.post {
+                updateVideoPreviewLayout(mediaPlayer.videoWidth, mediaPlayer.videoHeight)
+                previewVideoView.seekTo(1)
+                showVideoTapHint()
+            }
+        }
+        previewVideoView.setOnCompletionListener {
+            previewVideoView.seekTo(1)
+            showVideoTapHint()
         }
         previewVideoView.setOnErrorListener { _, _, _ ->
+            previewVideoPrepared = false
             showPlaceholder(getString(R.string.placeholder_no_preview))
             true
         }
-        previewVideoView.setVideoPath(previewUrl)
-        previewVideoView.requestFocus()
+        val headers = mapOf(
+            "Referer" to "https://www.douyin.com/",
+            "User-Agent" to PREVIEW_USER_AGENT,
+        )
+        previewVideoView.setVideoURI(Uri.parse(previewUrl), headers)
     }
 
     private fun configurePreparedPlayer(mediaPlayer: MediaPlayer) {
-        mediaPlayer.isLooping = true
-        mediaPlayer.setVolume(0f, 0f)
+        mediaPlayer.isLooping = false
+    }
+
+    private fun updateVideoPreviewLayout(videoWidth: Int, videoHeight: Int) {
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            resetVideoPreviewLayout()
+            return
+        }
+
+        val containerWidth = previewSurfaceContainer.width - previewSurfaceContainer.paddingStart - previewSurfaceContainer.paddingEnd
+        val containerHeight = previewSurfaceContainer.height - previewSurfaceContainer.paddingTop - previewSurfaceContainer.paddingBottom
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            resetVideoPreviewLayout()
+            return
+        }
+
+        val videoAspect = videoWidth.toFloat() / videoHeight.toFloat()
+        val containerAspect = containerWidth.toFloat() / containerHeight.toFloat()
+
+        val targetWidth: Int
+        val targetHeight: Int
+        if (videoAspect > containerAspect) {
+            targetWidth = containerWidth
+            targetHeight = (containerWidth / videoAspect).toInt()
+        } else {
+            targetHeight = containerHeight
+            targetWidth = (containerHeight * videoAspect).toInt()
+        }
+
+        previewVideoView.layoutParams = FrameLayout.LayoutParams(
+            targetWidth.coerceAtLeast(1),
+            targetHeight.coerceAtLeast(1),
+            Gravity.CENTER,
+        )
+    }
+
+    private fun resetVideoPreviewLayout() {
+        previewVideoView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER,
+        )
     }
 
     private fun loadImagePreview(previewUrl: String?) {
@@ -414,7 +483,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val requestToken = ++previewRequestToken
+        previewVideoPrepared = false
         previewVideoView.stopPlayback()
+        resetVideoPreviewLayout()
         previewVideoView.isVisible = false
         previewImageView.isVisible = true
         previewImageView.setImageDrawable(null)
@@ -463,13 +534,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPlaceholder(text: String) {
         previewRequestToken += 1
+        previewVideoPrepared = false
         previewLoadingBar.isVisible = false
         previewImageView.setImageDrawable(null)
         previewImageView.isVisible = false
         previewVideoView.stopPlayback()
+        resetVideoPreviewLayout()
         previewVideoView.isVisible = false
         previewPlaceholderTextView.isVisible = true
         previewPlaceholderTextView.text = text
+    }
+
+    private fun togglePreviewPlayback() {
+        if (!previewVideoView.isVisible || !previewVideoPrepared) {
+            return
+        }
+
+        if (previewVideoView.isPlaying) {
+            previewVideoView.pause()
+            showVideoTapHint()
+        } else {
+            previewPlaceholderTextView.isVisible = false
+            previewVideoView.start()
+        }
+    }
+
+    private fun showVideoTapHint() {
+        previewPlaceholderTextView.isVisible = true
+        previewPlaceholderTextView.text = getString(R.string.hint_tap_to_play)
     }
 
     private fun showRelativeImage(delta: Int) {
@@ -621,7 +713,7 @@ class MainActivity : AppCompatActivity() {
         detailTextView.text = detail
         val compactSuccessState = !isBusy && resultCard.isVisible && title == getString(R.string.status_success)
         statusTextView.isVisible = !compactSuccessState && title.isNotBlank()
-        detailTextView.isVisible = detail.isNotBlank()
+        detailTextView.isVisible = !compactSuccessState && detail.isNotBlank()
         detailTextView.maxLines = if (compactSuccessState) 1 else 2
         detailTextView.ellipsize = TextUtils.TruncateAt.END
         if (isBusy) {
@@ -657,7 +749,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildExtractionStatusDetail(extraction: ExtractionResult): String {
-        return extraction.description.ifBlank { getString(R.string.label_title_empty) }
+        return buildResultSummary(extraction)
     }
 
     private fun buildSavedFilesToast(result: DownloadResult): String {

@@ -5,10 +5,10 @@
     android:layout_height="match_parent"
     android:clipToPadding="false"
     android:fillViewport="true"
-    android:paddingStart="12dp"
-    android:paddingTop="12dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="16dp">
+    android:paddingStart="10dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="12dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -26,9 +26,9 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:orientation="vertical"
-                android:padding="12dp">
+                android:padding="10dp">
 
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/shareInputLayout"
@@ -48,11 +48,11 @@
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/shareEditText"
                         android:layout_width="match_parent"
-                        android:layout_height="72dp"
+                        android:layout_height="64dp"
                         android:gravity="top|start"
                         android:inputType="textMultiLine|textCapSentences"
                         android:maxLines="4"
-                        android:paddingTop="12dp"
+                        android:paddingTop="8dp"
                         android:textColor="@color/ink_900"
                         android:textColorHint="@color/ink_500"
                         android:textSize="15sp" />
@@ -61,7 +61,7 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.button.MaterialButton
@@ -69,10 +69,10 @@
                         style="@style/Widget.MaterialComponents.Button"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="6dp"
+                        android:layout_marginEnd="5dp"
                         android:layout_weight="1"
-                        android:insetTop="10dp"
-                        android:insetBottom="10dp"
+                        android:insetTop="8dp"
+                        android:insetBottom="8dp"
                         android:text="@string/button_paste_link"
                         android:textAllCaps="false"
                         android:textColor="@color/white"
@@ -84,10 +84,10 @@
                         style="@style/Widget.MaterialComponents.Button"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="6dp"
+                        android:layout_marginStart="5dp"
                         android:layout_weight="1"
-                        android:insetTop="10dp"
-                        android:insetBottom="10dp"
+                        android:insetTop="8dp"
+                        android:insetBottom="8dp"
                         android:text="@string/button_clear_link"
                         android:textAllCaps="false"
                         android:textColor="@color/white"
@@ -100,9 +100,9 @@
                     style="@style/Widget.MaterialComponents.Button"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:insetTop="12dp"
-                    android:insetBottom="12dp"
+                    android:layout_marginTop="8dp"
+                    android:insetTop="10dp"
+                    android:insetBottom="10dp"
                     android:text="@string/button_extract"
                     android:textAllCaps="false"
                     android:textColor="@color/white"
@@ -115,7 +115,7 @@
                     style="?android:attr/progressBarStyleHorizontal"
                     android:layout_width="match_parent"
                     android:layout_height="4dp"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:indeterminate="true"
                     android:max="100"
                     android:progressBackgroundTint="@color/green_100"
@@ -126,7 +126,7 @@
                     android:id="@+id/statusTextView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
                     android:ellipsize="end"
                     android:maxLines="1"
                     android:text="@string/status_idle"
@@ -138,7 +138,7 @@
                     android:id="@+id/detailTextView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="2dp"
                     android:ellipsize="end"
                     android:lineSpacingExtra="1dp"
                     android:maxLines="2"
@@ -152,7 +152,7 @@
             android:id="@+id/resultCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
             android:visibility="gone"
             app:cardBackgroundColor="@color/white"
             app:cardCornerRadius="22dp"
@@ -164,14 +164,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="12dp">
+                android:padding="10dp">
 
                 <TextView
                     android:id="@+id/resultSummaryTextView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
-                    android:maxLines="1"
+                    android:maxLines="2"
                     android:textColor="@color/ink_700"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -180,19 +180,23 @@
                     android:id="@+id/resultTabLayout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="4dp"
+                    android:minHeight="34dp"
                     app:tabIndicatorColor="@color/green_600"
                     app:tabIndicatorFullWidth="false"
+                    app:tabPaddingBottom="2dp"
+                    app:tabPaddingTop="2dp"
                     app:tabRippleColor="@color/green_100"
                     app:tabSelectedTextColor="@color/green_700"
                     app:tabTextColor="@color/ink_500" />
 
                 <FrameLayout
+                    android:id="@+id/previewSurfaceContainer"
                     android:layout_width="match_parent"
-                    android:layout_height="252dp"
-                    android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_preview_surface"
-                    android:padding="8dp">
+                    android:layout_height="220dp"
+                    android:layout_marginTop="4dp"
+                    android:background="@drawable/bg_media_preview_surface"
+                    android:padding="6dp">
 
                     <ImageView
                         android:id="@+id/previewImageView"
@@ -205,18 +209,21 @@
 
                     <VideoView
                         android:id="@+id/previewVideoView"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
                         android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/previewPlaceholderTextView"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
+                        android:clickable="true"
+                        android:focusable="false"
                         android:gravity="center"
                         android:padding="20dp"
                         android:text="@string/placeholder_no_preview"
-                        android:textColor="@color/ink_500"
+                        android:textColor="@color/white"
                         android:textSize="14sp" />
 
                     <ProgressBar
@@ -232,7 +239,7 @@
                     android:id="@+id/titleContentTextView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="6dp"
                     android:background="@drawable/bg_preview_surface"
                     android:lineSpacingExtra="2dp"
                     android:padding="14dp"
@@ -244,7 +251,7 @@
                     android:id="@+id/imageControlsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:visibility="gone">
@@ -254,7 +261,7 @@
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginEnd="6dp"
                         android:layout_weight="1"
                         android:minHeight="0dp"
                         android:text="@string/label_prev_image"
@@ -278,7 +285,7 @@
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
+                        android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:minHeight="0dp"
                         android:text="@string/label_next_image"
@@ -292,14 +299,14 @@
                     android:id="@+id/resultHintTextView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:textColor="@color/ink_600"
                     android:textSize="13sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.button.MaterialButton

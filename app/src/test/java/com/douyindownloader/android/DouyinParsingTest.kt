@@ -95,4 +95,104 @@ class DouyinParsingTest {
             detail?.imageAssets?.get(1)?.imageCandidates?.first(),
         )
     }
+
+    @Test
+    fun buildDetailFromRenderedSnapshot_filtersStaticAssetsFromRequestNoise() {
+        val realStill =
+            "https://p9-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/owe2kkgDeA5hgk4PDfPjPHAEY4AjuTAfWJAnPI~tplv-dy-aweme-images:q75.webp?biz_tag=aweme_images"
+        val motionUrl =
+            "https://v26-web.douyinvod.com/example/video/tos/cn/tos-cn-ve-15c000-ce/o4NzEAiEIEw0e28PqPiekbn8sS5wuAA6BCheG4/?mime_type=video_mp4"
+        val pageCover =
+            "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oYfk1doIAt7eAIrEqELTAPDGgV8NAJ5ReHyBry~noop.jpeg?biz_tag=pcweb_cover"
+        val staticBackground =
+            "https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/ies/douyin_web/media/blackBg.b7bedc994a938699.png"
+        val logoImage =
+            "https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/2025_0313_logo.png"
+        val galleryNoise =
+            "https://p3-pc-sign.douyinpic.com/obj/tos-cn-i-tsj2vxp0zn/427b632213784532a4076c3b0ab269fb?from=876277922"
+
+        val snapshot = RenderedPageSnapshot(
+            title = "我们终于长到这般年纪，上可共情长辈的沧桑，下可理解少年的锋芒 - 抖音",
+            scripts = emptyList(),
+            images = listOf(
+                RenderedImageNode(src = realStill, width = 1080, height = 1440, className = "", alt = ""),
+                RenderedImageNode(src = pageCover, width = 1080, height = 1440, className = "", alt = ""),
+                RenderedImageNode(src = staticBackground, width = 1080, height = 1080, className = "", alt = ""),
+            ),
+            videos = listOf(motionUrl),
+            requests = listOf(realStill, motionUrl, pageCover, staticBackground, logoImage, galleryNoise),
+        )
+
+        val detail = DouyinParsing.buildDetailFromRenderedSnapshot(snapshot, "7630290857161395057")
+
+        assertNotNull(detail)
+        assertEquals(1, detail?.imageAssets?.size)
+        assertEquals(realStill, detail?.imageAssets?.first()?.imageCandidates?.first())
+        assertEquals(motionUrl, detail?.imageAssets?.first()?.motionCandidates?.first())
+    }
+
+    @Test
+    fun candidateWorkUrls_prefersDesktopNotePageForShareNote() {
+        val urls = DouyinParsing.candidateWorkUrls(
+            "7630290857161395057",
+            "https://www.iesdouyin.com/share/note/7630290857161395057/",
+        )
+
+        assertEquals(
+            "https://www.douyin.com/note/7630290857161395057?previous_page=app_code_link",
+            urls.first(),
+        )
+    }
+
+    @Test
+    fun normalizeRenderedAwemeDetail_keepsImageMotionVideo() {
+        val detailJson =
+            """
+            {
+              "awemeId": "7630290857161395057",
+              "itemTitle": "motion sample",
+              "images": [
+                {
+                  "urlList": ["https://p9-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/still.webp"],
+                  "video": {
+                    "playAddr": [
+                      {
+                        "src": "https://v26-web.douyinvod.com/video/tos/example/?mime_type=video_mp4"
+                      }
+                    ],
+                    "bitRateList": [
+                      {
+                        "bitRate": 1062544,
+                        "width": 1280,
+                        "height": 720,
+                        "playAddr": [
+                          {
+                            "src": "https://v26-web.douyinvod.com/video/tos/example/?mime_type=video_mp4"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+
+        val detail = DouyinParsing.normalizeAwemeDetail(org.json.JSONObject(detailJson))
+
+        assertEquals(1, detail.imageAssets.size)
+        assertEquals(
+            "https://v26-web.douyinvod.com/video/tos/example/?mime_type=video_mp4",
+            detail.imageAssets.first().motionCandidates.first(),
+        )
+    }
+
+    @Test
+    fun looksLikeRealVideoUrl_rejectsAudioWrappedAsPlayUrl() {
+        val isVideo = DouyinParsing.looksLikeRealVideoUrl(
+            "https://aweme.snssdk.com/aweme/v1/play/?video_id=https://sf6-cdn-tos.douyinstatic.com/obj/ies-music/sample.mp3",
+        )
+
+        assertEquals(false, isVideo)
+    }
 }

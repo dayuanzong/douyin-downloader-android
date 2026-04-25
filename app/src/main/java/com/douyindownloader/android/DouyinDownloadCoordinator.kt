@@ -196,6 +196,30 @@ class DouyinDownloadCoordinator(context: Context) {
         imageItem: ExtractedImageItem,
         onProgress: (DownloadProgress) -> Unit,
     ): List<SavedAsset> {
+        if (imageItem.primaryAssetKind == SavedAssetKind.MOTION && imageItem.motionCandidates.isNotEmpty()) {
+            val motionFileName = imageItem.resolvedMotionFileName
+            val savedMotion = saver.saveVideo(
+                candidateUrls = imageItem.motionCandidates,
+                displayName = motionFileName,
+            ) { downloadedBytes, totalBytes ->
+                onProgress(
+                    DownloadProgress(
+                        message = "正在保存动图视频…",
+                        downloadedBytes = downloadedBytes,
+                        totalBytes = totalBytes,
+                    ),
+                )
+            }
+            return listOf(
+                SavedAsset(
+                    fileName = motionFileName,
+                    bytesWritten = savedMotion.bytesWritten,
+                    kind = SavedAssetKind.MOTION,
+                    relativePath = savedMotion.relativePath,
+                ),
+            )
+        }
+
         if (imageItem.imageCandidates.isNotEmpty()) {
             val savedImage = saver.saveImage(
                 candidateUrls = imageItem.imageCandidates,
@@ -221,9 +245,10 @@ class DouyinDownloadCoordinator(context: Context) {
         }
 
         if (imageItem.motionCandidates.isNotEmpty()) {
+            val motionFileName = imageItem.resolvedMotionFileName
             val savedMotion = saver.saveVideo(
                 candidateUrls = imageItem.motionCandidates,
-                displayName = imageItem.motionFileName ?: FileNameSanitizer.buildMotionFileName("douyin_media", imageItem.index + 1),
+                displayName = motionFileName,
             ) { downloadedBytes, totalBytes ->
                 onProgress(
                     DownloadProgress(
@@ -235,7 +260,7 @@ class DouyinDownloadCoordinator(context: Context) {
             }
             return listOf(
                 SavedAsset(
-                    fileName = imageItem.motionFileName ?: FileNameSanitizer.buildMotionFileName("douyin_media", imageItem.index + 1),
+                    fileName = motionFileName,
                     bytesWritten = savedMotion.bytesWritten,
                     kind = SavedAssetKind.MOTION,
                     relativePath = savedMotion.relativePath,
@@ -315,6 +340,12 @@ data class ExtractedImageItem(
     val imageFileName: String,
     val motionFileName: String?,
 ) {
+    val primaryAssetKind: SavedAssetKind
+        get() = if (motionCandidates.isNotEmpty()) SavedAssetKind.MOTION else SavedAssetKind.IMAGE
+
+    val resolvedMotionFileName: String
+        get() = motionFileName ?: FileNameSanitizer.buildMotionFileName("douyin_media", index + 1)
+
     val downloadableAssetCount: Int
         get() = (if (imageCandidates.isNotEmpty()) 1 else 0) + (if (motionCandidates.isNotEmpty()) 1 else 0)
 }

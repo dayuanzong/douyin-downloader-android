@@ -7,8 +7,7 @@ local.properties
 /build/
 /app/build/
 captures/
-debug-captunes/
-debug-captures/
+debug-captures*/
 *.apk
 *.aar
 *.dex

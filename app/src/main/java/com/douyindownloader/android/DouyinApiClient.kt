@@ -2,10 +2,14 @@ package com.douyindownloader.android
 
 import android.content.Context
 import android.util.Log
+import android.webkit.CookieManager
+import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.IOException
+import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
+import java.net.URLEncoder
 import java.net.URL
 
 class DouyinApiClient(context: Context) {
@@ -21,6 +25,10 @@ class DouyinApiClient(context: Context) {
                 readTimeoutMs = REDIRECT_READ_TIMEOUT_MS,
             ).apply {
                 instanceFollowRedirects = false
+                if (looksLikeShortDouyinUrl(currentUrl) || looksLikeDesktopDouyinPage(currentUrl)) {
+                    applyDesktopDouyinHeaders(currentUrl)
+                }
+                applyBrowserCookies(currentUrl)
             }
 
             try {
@@ -46,19 +54,19 @@ class DouyinApiClient(context: Context) {
     }
 
     fun fetchAwemeDetail(awemeId: String, pageUrl: String? = null): AwemeDetail {
-        fetchItemInfoDetail(awemeId, pageUrl)?.let {
-            debugLog("fetchAwemeDetail: iteminfo hit for awemeId=$awemeId")
-            return it
-        }
-
         val candidateUrls = DouyinParsing.candidateWorkUrls(awemeId, pageUrl)
         val preferRenderedExtractor = looksLikeSlidesOrNotePage(pageUrl, candidateUrls)
         val pageFetchErrors = mutableListOf<Throwable>()
         debugLog("fetchAwemeDetail: candidateUrls=$candidateUrls preferRendered=$preferRenderedExtractor")
 
-        if (preferRenderedExtractor) {
-            fetchRenderedDetail(awemeId, candidateUrls)?.let {
-                debugLog("fetchAwemeDetail: rendered extractor hit first for awemeId=$awemeId")
+        fetchWebDetail(awemeId, pageUrl)?.let {
+            debugLog("fetchAwemeDetail: web detail hit for awemeId=$awemeId")
+            return it
+        }
+
+        if (!preferRenderedExtractor) {
+            fetchItemInfoDetail(awemeId, pageUrl)?.let {
+                debugLog("fetchAwemeDetail: iteminfo hit for awemeId=$awemeId")
                 return it
             }
         }
@@ -86,20 +94,105 @@ class DouyinApiClient(context: Context) {
                 }
             }
 
-        if (!preferRenderedExtractor) {
-            fetchRenderedDetail(awemeId, candidateUrls)?.let {
-                debugLog("fetchAwemeDetail: rendered extractor fallback hit for awemeId=$awemeId")
+        fetchRenderedDetail(awemeId, candidateUrls)?.let {
+            debugLog("fetchAwemeDetail: rendered extractor fallback hit for awemeId=$awemeId")
+            return it
+        }
+
+        if (preferRenderedExtractor) {
+            fetchItemInfoDetail(awemeId, pageUrl)?.let {
+                debugLog("fetchAwemeDetail: iteminfo fallback hit for awemeId=$awemeId")
                 return it
             }
         }
 
         if (pageFetchErrors.any { it.isTransientFailure() }) {
             debugLog("fetchAwemeDetail: transient network failure for awemeId=$awemeId")
-            throw IllegalStateException("当前网络返回不稳定，请稍后重试。")
+            throw IllegalStateException("褰撳墠缃戠粶杩斿洖涓嶇ǔ瀹氾紝璇风◢鍚庨噸璇曘€?")
         }
 
         debugLog("fetchAwemeDetail: no downloadable media for awemeId=$awemeId")
-        throw IllegalStateException("当前作品没有可下载的媒体地址，可能需要登录、作品已失效，或页面结构已变化。")
+        throw IllegalStateException("褰撳墠浣滃搧娌℃湁鍙笅杞界殑濯掍綋鍦板潃锛屽彲鑳介渶瑕佺櫥褰曘€佷綔鍝佸凡澶辨晥锛屾垨椤甸潰缁撴瀯宸插彉鏇淬€?")
+    }
+
+    private fun fetchWebDetail(awemeId: String, pageUrl: String?): AwemeDetail? {
+        val params = linkedMapOf(
+            "device_platform" to "webapp",
+            "aid" to "6383",
+            "channel" to "channel_pc_web",
+            "pc_client_type" to "1",
+            "version_code" to "290100",
+            "version_name" to "29.1.0",
+            "cookie_enabled" to "true",
+            "screen_width" to "1920",
+            "screen_height" to "1080",
+            "browser_language" to "zh-CN",
+            "browser_platform" to "Win32",
+            "browser_name" to "Chrome",
+            "browser_version" to "130.0.0.0",
+            "browser_online" to "true",
+            "engine_name" to "Blink",
+            "engine_version" to "130.0.0.0",
+            "os_name" to "Windows",
+            "os_version" to "10",
+            "cpu_core_num" to "12",
+            "device_memory" to "8",
+            "platform" to "PC",
+            "downlink" to "10",
+            "effective_type" to "4g",
+            "round_trip_time" to "0",
+            "update_version_code" to "170400",
+            "pc_libra_divert" to "Windows",
+            "aweme_id" to awemeId,
+            "msToken" to "",
+        )
+        val aBogus = runCatching { ABogusSigner.generateValue(params) }
+            .onFailure { debugLog("fetchWebDetail: a_bogus failed awemeId=$awemeId error=${it.message}") }
+            .getOrNull() ?: return null
+        val endpoint = buildWebDetailEndpoint(params, aBogus)
+        val referer = pageUrl?.takeIf { it.isNotBlank() } ?: "https://www.douyin.com/video/$awemeId"
+        val cookie = prepareWebDetailCookie(pageUrl)
+        val connection = openConnection(
+            url = endpoint,
+            connectTimeoutMs = API_CONNECT_TIMEOUT_MS,
+            readTimeoutMs = API_READ_TIMEOUT_MS,
+        ).apply {
+            setRequestProperty("Accept", "application/json, text/plain, */*")
+            applyDesktopDouyinHeaders(referer)
+            if (cookie.isNotBlank()) {
+                setRequestProperty("Cookie", cookie)
+            }
+        }
+
+        return try {
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                debugLog("fetchWebDetail: status=$responseCode awemeId=$awemeId")
+                return null
+            }
+
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            if (body.isBlank()) {
+                debugLog("fetchWebDetail: blank body awemeId=$awemeId")
+                return null
+            }
+
+            val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
+            if (root.has("status_code") && root.optInt("status_code") != 0) {
+                debugLog("fetchWebDetail: status_code=${root.optInt("status_code")} awemeId=$awemeId")
+                return null
+            }
+
+            val rawDetail = root.optJSONObject("aweme_detail") ?: root.optJSONObject("aweme") ?: return null
+            DouyinParsing.findUnavailableReason(rawDetail)?.let { throw IllegalStateException(it) }
+            DouyinParsing.normalizeAwemeDetail(rawDetail)
+                .takeIf { it.videoCandidates.isNotEmpty() || it.imageAssets.isNotEmpty() || it.hasImageContent }
+        } catch (error: IOException) {
+            debugLog("fetchWebDetail: network error awemeId=$awemeId error=${error.message}")
+            null
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun fetchRenderedDetail(awemeId: String, candidateUrls: List<String>): AwemeDetail? {
@@ -151,12 +244,16 @@ class DouyinApiClient(context: Context) {
         ).apply {
             setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             setRequestProperty("Referer", url)
+            if (looksLikeDesktopDouyinPage(url)) {
+                applyDesktopDouyinHeaders(url)
+            }
+            applyBrowserCookies(url)
         }
 
         return try {
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
-                throw IOException("作品页面返回异常状态码: $responseCode")
+                throw IOException("浣滃搧椤甸潰杩斿洖寮傚父鐘舵€佺爜: $responseCode")
             }
             connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
@@ -205,8 +302,101 @@ class DouyinApiClient(context: Context) {
         return lowered.any { "/slides/" in it || "/note/" in it || "is_slides=1" in it || "contains_video_type_clip=1" in it }
     }
 
+    private fun looksLikeShortDouyinUrl(url: String): Boolean {
+        val lowered = url.lowercase()
+        return "v.douyin.com/" in lowered || "iesdouyin.com/share/" in lowered
+    }
+
+    private fun looksLikeDesktopDouyinPage(url: String): Boolean {
+        val host = runCatching { URL(url).host.lowercase() }.getOrDefault("")
+        return host == "www.douyin.com" || (host.endsWith(".douyin.com") && "iesdouyin" !in host)
+    }
+
+    private fun buildWebDetailEndpoint(params: LinkedHashMap<String, String>, aBogus: String): String {
+        val query = params.entries.joinToString("&") { (key, value) ->
+            "${key.urlEncode()}=${value.urlEncode()}"
+        }
+        return "$WEB_DETAIL_ENDPOINT?$query&a_bogus=${aBogus.urlEncode()}"
+    }
+
+    private fun prepareWebDetailCookie(pageUrl: String?): String {
+        val pageCookie = pageUrl?.let { runCatching { CookieManager.getInstance().getCookie(it) }.getOrNull() }
+        val webCookie = runCatching { CookieManager.getInstance().getCookie("https://www.douyin.com/") }.getOrNull()
+        var merged = mergeCookies(pageCookie, webCookie)
+        if (!merged.contains("ttwid=")) {
+            generateTtwidCookie()?.let { merged = mergeCookies(merged, it) }
+        }
+        return merged
+    }
+
+    private fun generateTtwidCookie(): String? {
+        val connection = (URL(TTWID_ENDPOINT).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = API_CONNECT_TIMEOUT_MS
+            readTimeout = API_READ_TIMEOUT_MS
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json, text/plain, */*")
+            setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
+            setRequestProperty("User-Agent", DESKTOP_USER_AGENT)
+            setRequestProperty("Referer", "https://www.douyin.com/")
+        }
+
+        return try {
+            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                writer.write(TTWID_PAYLOAD)
+            }
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                debugLog("generateTtwidCookie: status=$responseCode")
+                return null
+            }
+
+            buildList {
+                addAll(connection.headerFields["Set-Cookie"].orEmpty())
+                connection.getHeaderField("Set-Cookie")?.let(::add)
+            }
+                .flatMap { it.split(';') }
+                .map(String::trim)
+                .firstOrNull { it.startsWith("ttwid=") }
+        } catch (error: IOException) {
+            debugLog("generateTtwidCookie: error=${error.message}")
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun mergeCookies(vararg cookieHeaders: String?): String {
+        val cookiesByName = linkedMapOf<String, String>()
+        cookieHeaders
+            .filterNotNull()
+            .flatMap { it.split(';') }
+            .map(String::trim)
+            .filter { '=' in it }
+            .forEach { token -> cookiesByName[token.substringBefore('=')] = token }
+        return cookiesByName.values.joinToString("; ")
+    }
+
+    private fun HttpURLConnection.applyDesktopDouyinHeaders(url: String) {
+        setRequestProperty("User-Agent", DESKTOP_USER_AGENT)
+        setRequestProperty("Referer", url.takeIf { it.isNotBlank() } ?: "https://www.douyin.com/")
+        setRequestProperty("sec-ch-ua", "\"Chromium\";v=\"142\", \"Microsoft Edge\";v=\"142\", \"Not_A Brand\";v=\"99\"")
+        setRequestProperty("sec-ch-ua-mobile", "?0")
+        setRequestProperty("sec-ch-ua-platform", "\"Windows\"")
+    }
+
+    private fun HttpURLConnection.applyBrowserCookies(url: String) {
+        val cookie = runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull()
+        if (!cookie.isNullOrBlank()) {
+            setRequestProperty("Cookie", cookie)
+        }
+    }
+
     private fun Throwable.isTransientFailure(): Boolean {
-        return this is SocketTimeoutException || this is IOException || (this is IllegalStateException && message == "当前网络返回不稳定，请稍后重试。")
+        return this is SocketTimeoutException ||
+            this is IOException ||
+            (this is IllegalStateException && message?.contains("缃戠粶杩斿洖涓嶇ǔ瀹?") == true)
     }
 
     private fun debugLog(message: String) {
@@ -216,6 +406,11 @@ class DouyinApiClient(context: Context) {
 
     companion object {
         private const val TAG = "DouyinApiClient"
+        private const val WEB_DETAIL_ENDPOINT = "https://www.douyin.com/aweme/v1/web/aweme/detail/"
+        private const val TTWID_ENDPOINT = "https://ttwid.bytedance.com/ttwid/union/register/"
+        private const val TTWID_PAYLOAD =
+            "{\"region\":\"cn\",\"aid\":1768,\"needFid\":false,\"service\":\"www.ixigua.com\"," +
+                "\"migrate_info\":{\"ticket\":\"\",\"source\":\"node\"},\"cbUrlProtocol\":\"https\",\"union\":true}"
         private const val MAX_REDIRECT_FOLLOWS = 6
         private const val REDIRECT_CONNECT_TIMEOUT_MS = 4_000
         private const val REDIRECT_READ_TIMEOUT_MS = 6_000
@@ -224,9 +419,14 @@ class DouyinApiClient(context: Context) {
         private const val PAGE_CONNECT_TIMEOUT_MS = 3_500
         private const val PAGE_READ_TIMEOUT_MS = 5_500
         private const val MAX_STANDARD_PAGE_FETCH_CANDIDATES = 2
-        private const val MAX_SLIDES_PAGE_FETCH_CANDIDATES = 1
+        private const val MAX_SLIDES_PAGE_FETCH_CANDIDATES = 3
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S9210) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        private const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
     }
 }
+
+private fun String.urlEncode(): String = URLEncoder.encode(this, Charsets.UTF_8.name())
